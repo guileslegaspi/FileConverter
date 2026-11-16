@@ -1,0 +1,25 @@
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+npm-debug.log*
+
+# .NET
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
