@@ -22,12 +22,13 @@ namespace FileConverter.Services
 
 			try
 			{
-				var inputPath = Path.Combine(temporaryDirectory, file.FileName);
+				var safeFileName = Path.GetFileName(file.FileName);
+				var inputPath = Path.Combine(temporaryDirectory, safeFileName);
 
 				var outputPath = Path.Combine
 					(
 						temporaryDirectory,
-						Path.GetFileNameWithoutExtension(file.FileName) + "pdf"
+						Path.GetFileNameWithoutExtension(file.FileName) + ".pdf"
 					);
 
 				await using (var stream = new FileStream(inputPath, FileMode.Create))
@@ -38,7 +39,7 @@ namespace FileConverter.Services
 				var startInfo = new ProcessStartInfo
 				{
 					FileName = _settings.ExecutablePath,
-					Arguments = $"--headless --convert-to pdf \"{temporaryDirectory}\" \"{inputPath}\"",
+					Arguments = $"--headless --convert-to pdf --outdir \"{temporaryDirectory}\" \"{inputPath}\"",
 					UseShellExecute = false,
 					CreateNoWindow = true,
 					RedirectStandardOutput = true,
@@ -84,7 +85,70 @@ namespace FileConverter.Services
 
 		public async Task<ConversionResult> CovertPdfToWordAsync(IFormFile file)
 		{
-			throw new NotImplementedException("PDF to Word conversion is not implemented yet.");
+			var temporaryDirectory = Path.Combine(
+				Path.GetTempPath(),
+				Guid.NewGuid().ToString()
+			);
+
+			Directory.CreateDirectory(temporaryDirectory);
+
+			try
+			{
+				var safeFileName = Path.GetFileName(file.FileName);
+
+				var inputPath = Path.Combine(temporaryDirectory, safeFileName);
+
+				var outputPath = Path.Combine(
+					temporaryDirectory,
+					Path.GetFileNameWithoutExtension(safeFileName) + ".docx"
+				);
+
+				await using (var stream = new FileStream(inputPath, FileMode.Create))
+				{
+					await file.CopyToAsync(stream);
+				}
+
+				var startInfo = new ProcessStartInfo
+				{
+					FileName = _settings.ExecutablePath,
+					Arguments = $"--headless --infilter=\"writer_pdf_import\" --convert-to docx:\"Office Open XML Text\" --outdir \"{temporaryDirectory}\" \"{inputPath}\"",
+					UseShellExecute = false,
+					CreateNoWindow = true,
+					RedirectStandardOutput = true,
+					RedirectStandardError = true
+				};
+
+				using var process = new Process { StartInfo = startInfo };
+
+				process.Start();
+
+				var output = await process.StandardOutput.ReadToEndAsync();
+				var error = await process.StandardError.ReadToEndAsync();
+
+				await process.WaitForExitAsync();
+
+				if (process.ExitCode != 0 || !File.Exists(outputPath))
+				{
+					throw new Exception($"Conversion failed: {error} {output}");
+				}
+
+				var fileContent = await File.ReadAllBytesAsync(outputPath);
+
+				return new ConversionResult
+				{
+					FileContent = fileContent,
+					FileName = Path.GetFileName(outputPath),
+					ContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+				};
+			}
+			finally 
+			{
+				if(Directory.Exists(temporaryDirectory))
+				{
+					Directory.Delete(temporaryDirectory, true);
+				}
+			}
+
 		}
 	}
 }
